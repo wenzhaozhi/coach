@@ -81,6 +81,10 @@ async function loadData() {
   const f = Object.values(g.files)[0];
   D = JSON.parse(f.content || '{}');
   D.goals = D.goals || []; D.log = D.log || {};
+  D.fixed = D.fixed || {};
+  D.fixed.water = D.fixed.water || { goal_ml: 1700, cup_ml: 200, ml: 0, date: todayStr() };
+  if (D.fixed.water.date !== todayStr()) { D.fixed.water.date = todayStr(); D.fixed.water.ml = 0; }
+  D.fixed.meal = D.fixed.meal || { text: "吃饭慢一点，细嚼慢咽", date: "" };
   return D;
 }
 
@@ -163,6 +167,40 @@ function items() {
   });
 }
 
+function fixedCards() {
+  const w = D.fixed.water, m = D.fixed.meal;
+  const left = Math.max(0, w.goal_ml - w.ml);
+  const pct = Math.min(100, Math.round(w.ml / w.goal_ml * 100));
+  const mealDone = m.date === todayStr();
+  return `
+    <div class="card" style="border-color:rgba(143,240,240,.25)">
+      <div class="task">喝水 <span style="font-size:12px;color:#7f959d">固定</span></div>
+      <div class="meta">已喝 ${w.ml} / ${w.goal_ml} ml　${left > 0 ? '还差 ' + left + ' ml' : '今天够了'}</div>
+      <div style="height:6px;background:rgba(255,255,255,.08);border-radius:3px;margin-top:10px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#8ff0f0,#3fb6d4)"></div></div>
+      <div class="row"><button class="primary" onclick="drink()">喝了一杯（+${w.cup_ml} ml）</button></div>
+    </div>
+    <div class="card" style="border-color:rgba(240,168,74,.25)">
+      <div class="task">细嚼慢咽 <span style="font-size:12px;color:#7f959d">固定</span></div>
+      <div class="meta">${esc(m.text)}${mealDone ? '　· 今天已完成' : ''}</div>
+      <div class="row">${mealDone
+        ? `<button class="ghost" onclick="meal(false)">撤销</button>`
+        : `<button class="primary" onclick="meal(true)">吃完了</button>`}</div>
+    </div>`;
+}
+
+async function drink() {
+  const w = D.fixed.water;
+  if (w.date !== todayStr()) { w.date = todayStr(); w.ml = 0; }
+  w.ml += w.cup_ml || 200;
+  await saveData(); await loadData(); render();
+}
+
+async function meal(done) {
+  D.fixed.meal.date = done ? todayStr() : '';
+  await saveData(); await loadData(); render();
+}
+
 function render() {
   if (!ensureSetup()) return;
   ['today','goals','new'].forEach(t => {
@@ -179,6 +217,7 @@ function render() {
     V.innerHTML = `
       <div class="top"><div class="kicker">${todayStr()}</div><div class="gear" onclick="logout()">⚙</div></div>
       <h1>${esc(head)}</h1><div class="sub">${esc(sub)}</div>
+      ${fixedCards()}
       ${it.length ? it.map(i => `
         <div class="card ${i.state==='done'?'done':''}">
           <div class="task">${esc(i.title)}</div>
@@ -203,7 +242,17 @@ function render() {
           <button class="ghost" onclick="togglePause(${g.id})">${g.paused?'恢复':'暂停'}</button>
           <button class="ghost" style="color:#f08a8a;border-color:rgba(240,138,138,.35)" onclick="delGoal(${g.id})">删除</button>
         </div>
-      </div>`).join('');
+      </div>`).join('') + `
+      <div class="card" style="opacity:.9">
+        <div class="task">喝水 <span style="font-size:12px;color:#7f959d">固定 · 不可删除</span></div>
+        <div class="meta">每天 ${D.fixed.water.goal_ml} ml，一杯 ${D.fixed.water.cup_ml} ml</div>
+        <div class="row"><button class="ghost" disabled>系统内置</button></div>
+      </div>
+      <div class="card" style="opacity:.9">
+        <div class="task">细嚼慢咽 <span style="font-size:12px;color:#7f959d">固定 · 不可删除</span></div>
+        <div class="meta">每天 11:30 提醒</div>
+        <div class="row"><button class="ghost" disabled>系统内置</button></div>
+      </div>`;
   }
   if (TAB.startsWith('goal-')) {
     const id = +TAB.split('-')[1];
