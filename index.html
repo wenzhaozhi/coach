@@ -337,6 +337,17 @@ function render() {
         <div class="row" style="flex-wrap:wrap;gap:7px">
           ${Object.keys(CHECK_LABEL).map(k => `<button class="ghost" style="font-size:13px;padding:8px 11px;${checkOf(g).type===k?'border-color:#8ff0f0;color:#8ff0f0':''}" onclick="setCheck(${g.id},'${k}')">${CHECK_LABEL[k]}</button>`).join('')}
         </div>
+        ${checkOf(g).type === 'timer' ? `
+          <div class="meta" style="margin-top:14px">时长：${checkOf(g).minutes || 15} 分钟</div>
+          <div class="row" style="flex-wrap:wrap;gap:7px">
+            ${[5,10,15,20,30,45,60].map(m => `<button class="ghost" style="font-size:13px;padding:8px 11px;${(checkOf(g).minutes||15)===m?'border-color:#8ff0f0;color:#8ff0f0':''}" onclick="setMinutes(${g.id},${m})">${m}分</button>`).join('')}
+            <button class="ghost" style="font-size:13px;padding:8px 11px" onclick="setMinutes(${g.id},0)">自定义</button>
+          </div>` : ''}
+        ${checkOf(g).type === 'count' ? `
+          <div class="meta" style="margin-top:14px">今天的目标次数：${checkOf(g).target || 8}</div>
+          <div class="row" style="flex-wrap:wrap;gap:7px">
+            ${[4,6,8,10,12,20].map(n => `<button class="ghost" style="font-size:13px;padding:8px 11px;${(checkOf(g).target||8)===n?'border-color:#8ff0f0;color:#8ff0f0':''}" onclick="setTarget(${g.id},${n})">${n} 次</button>`).join('')}
+          </div>` : ''}
       </div>
       <div class="card">
         <div class="meta" style="margin-bottom:10px">和教练说</div>
@@ -460,6 +471,23 @@ async function create(title) {
                  stage: 0, streak: 0, stage_streak: 0, miss: 0, level: 2, chat: [],
                  check: inferCheck(title) });
   await saveData(); await loadData(); go('today'); render();
+}
+
+async function setMinutes(id, m) {
+  const g = D.goals.find(x => x.id === id); if (!g) return;
+  if (m === 0) {
+    const v = parseInt(prompt('几分钟？', String(checkOf(g).minutes || 15)), 10);
+    if (!v || v < 1 || v > 300) return;
+    m = v;
+  }
+  g.check = Object.assign({}, checkOf(g), { type: 'timer', minutes: m });
+  await saveData(); await loadData(); render();
+}
+
+async function setTarget(id, n) {
+  const g = D.goals.find(x => x.id === id); if (!g) return;
+  g.check = Object.assign({}, checkOf(g), { type: 'count', target: n });
+  await saveData(); await loadData(); render();
 }
 
 async function setCheck(id, type) {
