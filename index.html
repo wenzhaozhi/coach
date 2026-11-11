@@ -169,6 +169,75 @@ function items() {
   });
 }
 
+const CHECK_LABEL = { timer: '计时', photo: '拍照', count: '计数', abstain: '戒断', none: '直接打卡' };
+
+function inferCheck(title) {
+  const t = title || '';
+  if (/戒|不抽|不刷|少喝|少吃|别/.test(t)) return { type: 'abstain' };
+  if (/喝|水|杯/.test(t)) return { type: 'count', target: 8 };
+  if (/练|读|学|弹|写|运动|跑|健身/.test(t)) return { type: 'timer', minutes: 15 };
+  return { type: 'none' };
+}
+
+function checkOf(g) { return g.check || inferCheck(g.title); }
+
+function checkUI(g, st) {
+  const c = checkOf(g);
+  const done = st.state === 'done';
+  if (done) return `<div class="row"><button class="ghost" onclick="act(${g.id},'undo')">撤销</button></div>`;
+  if (c.type === 'timer') {
+    return `<div class="row">
+      <button class="primary" onclick="startTimer(${g.id},${c.minutes || 15})">开始 ${c.minutes || 15} 分钟</button>
+      <button class="ghost" onclick="act(${g.id},'done')">已经做了</button></div>`;
+  }
+  if (c.type === 'photo') {
+    return `<div class="row">
+      <button class="primary" onclick="shoot(${g.id})">拍张照</button>
+      <button class="ghost" onclick="act(${g.id},'done')">跳过照片</button></div>
+      <input id="cam-${g.id}" type="file" accept="image/*" capture="environment" style="display:none" onchange="shootDone(${g.id},this)">`;
+  }
+  if (c.type === 'count') {
+    const n = (D.log[todayStr()] && D.log[todayStr()]['c' + g.id]) || 0;
+    const tgt = c.target || 8;
+    return `<div class="meta">今天 ${n} / ${tgt}</div>
+      <div class="row"><button class="primary" onclick="countUp(${g.id},${tgt})">+1</button></div>`;
+  }
+  if (c.type === 'abstain') {
+    return `<div class="row">
+      <button class="primary" onclick="act(${g.id},'done')">今天忍住了</button>
+      <button class="ghost" style="color:#f08a8a" onclick="act(${g.id},'undo')">今天破功了</button></div>`;
+  }
+  return `<div class="row"><button class="primary" onclick="act(${g.id},'done')">做了</button>
+    <button class="ghost" onclick="act(${g.id},'later')">推迟</button></div>`;
+}
+
+let TIMERS = {};
+function startTimer(id, mins) {
+  const end = Date.now() + mins * 60000;
+  TIMERS[id] = end;
+  render();
+  const tick = setInterval(() => {
+    if (!TIMERS[id]) return clearInterval(tick);
+    const left = Math.max(0, Math.round((TIMERS[id] - Date.now()) / 1000));
+    const el = document.getElementById('tm-' + id);
+    if (el) el.textContent = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+    if (left <= 0) { clearInterval(tick); act(id, 'done'); }
+  }, 1000);
+}
+function cancelTimer(id) { delete TIMERS[id]; render(); }
+function shoot(id) { document.getElementById('cam-' + id).click(); }
+async function shootDone(id, input) {
+  if (!input.files || !input.files[0]) return;
+  act(id, 'done');
+}
+async function countUp(id, target) {
+  const d = todayStr(); D.log[d] = D.log[d] || {};
+  const k = 'c' + id;
+  D.log[d][k] = (D.log[d][k] || 0) + 1;
+  if (D.log[d][k] >= target) D.log[d][id] = 'done';
+  await saveData(); await loadData(); render();
+}
+
 function fixedCards() {
   const w = D.fixed.water, m = D.fixed.meal;
   const left = Math.max(0, w.goal_ml - w.ml);
@@ -226,10 +295,8 @@ function render() {
           <div class="meta">${esc(i.task)}</div>
           ${i.isTiny ? '<div class="tiny">今天是最小版本：做完就算赢</div>' : ''}
           <div class="meta">${esc(i.stage)} · 连续 ${i.streak} 天${i.canUp?` · 还差 ${i.toNext} 天进下一阶段`:' · 已到最后一阶段'}</div>
-          <div class="row">${i.state==='done'
-            ? `<button class="ghost" onclick="act(${i.id},'undo')">撤销</button>`
-            : `<button class="primary" onclick="act(${i.id},'done')">做了</button>
-               <button class="ghost" onclick="act(${i.id},'later')">推迟</button>`}</div>
+          ${TIMERS[i.id] ? `<div class="meta" id="tm-${i.id}" style="font-size:26px;color:#8ff0f0;margin-top:10px">--:--</div>
+            <div class="row"><button class="ghost" onclick="cancelTimer(${i.id})">放弃计时</button></div>` : checkUI(i, i)}
         </div>`).join('') : '<div class="empty">还没有目标<br>点下面「＋ 新目标」</div>'}`;
   }
   if (TAB === 'goals') {
@@ -265,7 +332,12 @@ function render() {
       <h1>${esc(g.title)}</h1><div class="sub">${esc(g.why || '')}</div>
       <div class="card">${g.stages.map((s, i) => `<div class="stage">
         <span>${esc(s.period)} · ${esc(s.focus)}</span><b>${i === (g.stage||0) ? '← 现在' : '·'}</b></div>`).join('')}</div>
-      <div class="card"><div class="meta">连续 ${g.streak||0} 天 · 等级 ${g.level||2}（1=最小版本，3=加量）</div></div>
+      <div class="card"><div class="meta">连续 ${g.streak||0} 天 · 等级 ${g.level||2}</div>
+        <div class="meta" style="margin-top:8px">打卡方式：${CHECK_LABEL[checkOf(g).type]}</div>
+        <div class="row" style="flex-wrap:wrap;gap:7px">
+          ${Object.keys(CHECK_LABEL).map(k => `<button class="ghost" style="font-size:13px;padding:8px 11px;${checkOf(g).type===k?'border-color:#8ff0f0;color:#8ff0f0':''}" onclick="setCheck(${g.id},'${k}')">${CHECK_LABEL[k]}</button>`).join('')}
+        </div>
+      </div>
       <div class="card">
         <div class="meta" style="margin-bottom:10px">和教练说</div>
         <div>${(g.chat||[]).map(m => `<div class="msg ${m.role}"><div class="bubble">${esc(m.text)}</div></div>`).join('') || '<div class="meta">还没有对话</div>'}</div>
@@ -385,8 +457,18 @@ async function create(title) {
   const p = window._pv; if (!p) return;
   const id = Math.max(0, ...D.goals.map(g => g.id)) + 1;
   D.goals.push({ id, title, type: 'skill', why: p.why, stages: p.stages,
-                 stage: 0, streak: 0, stage_streak: 0, miss: 0, level: 2, chat: [] });
+                 stage: 0, streak: 0, stage_streak: 0, miss: 0, level: 2, chat: [],
+                 check: inferCheck(title) });
   await saveData(); await loadData(); go('today'); render();
+}
+
+async function setCheck(id, type) {
+  const g = D.goals.find(x => x.id === id); if (!g) return;
+  const base = inferCheck(g.title);
+  g.check = { type };
+  if (type === 'timer') g.check.minutes = base.minutes || 15;
+  if (type === 'count') g.check.target = base.target || 8;
+  await saveData(); await loadData(); render();
 }
 
 async function togglePause(id) {
