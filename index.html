@@ -197,7 +197,10 @@ function render() {
       <div class="card"><div class="task">${esc(g.title)}</div>
         <div class="meta">${esc(g.why || '')}</div>
         <div class="meta">${esc(g.stages[Math.min(g.stage||0,g.stages.length-1)].period)} · 连续 ${g.streak||0} 天 · 等级 ${g.level||2}</div>
-        <div class="row"><button class="ghost" onclick="go('goal-${g.id}')">看计划 / 和教练说</button></div>
+        <div class="row">
+          <button class="primary" onclick="go('goal-${g.id}')">看计划 / 和教练说</button>
+          <button class="ghost" style="color:#f08a8a;border-color:rgba(240,138,138,.35)" onclick="delGoal(${g.id})">删除</button>
+        </div>
       </div>`).join('');
   }
   if (TAB.startsWith('goal-')) {
