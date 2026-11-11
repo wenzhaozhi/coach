@@ -153,7 +153,7 @@ const v = id => document.getElementById(id).value.trim();
 
 function items() {
   const log = (D.log || {})[todayStr()] || {};
-  return D.goals.map(g => {
+  return D.goals.filter(g => !g.paused).map(g => {
     const st = g.stages[Math.min(g.stage || 0, g.stages.length - 1)];
     const tiny = (g.level || 2) <= 1;
     return { id: g.id, title: g.title, task: tiny ? st.tiny : st.daily, isTiny: tiny,
@@ -194,11 +194,13 @@ function render() {
   if (TAB === 'goals') {
     V.innerHTML = `<div class="kicker">全部目标</div><h1>${D.goals.length} 个目标</h1>
       <div class="sub">同时别超过 3 个</div>` + D.goals.map(g => `
-      <div class="card"><div class="task">${esc(g.title)}</div>
+      <div class="card" style="${g.paused?'opacity:.55':''}">
+        <div class="task">${esc(g.title)}${g.paused?' <span style="font-size:12px;color:#f0a84a">已暂停</span>':''}</div>
         <div class="meta">${esc(g.why || '')}</div>
         <div class="meta">${esc(g.stages[Math.min(g.stage||0,g.stages.length-1)].period)} · 连续 ${g.streak||0} 天 · 等级 ${g.level||2}</div>
-        <div class="row">
-          <button class="primary" onclick="go('goal-${g.id}')">看计划 / 和教练说</button>
+        <div class="row" style="flex-wrap:wrap">
+          <button class="primary" onclick="go('goal-${g.id}')">看计划</button>
+          <button class="ghost" onclick="togglePause(${g.id})">${g.paused?'恢复':'暂停'}</button>
           <button class="ghost" style="color:#f08a8a;border-color:rgba(240,138,138,.35)" onclick="delGoal(${g.id})">删除</button>
         </div>
       </div>`).join('');
@@ -271,6 +273,17 @@ async function create(title) {
   D.goals.push({ id, title, type: 'skill', why: p.why, stages: p.stages,
                  stage: 0, streak: 0, stage_streak: 0, miss: 0, level: 2, chat: [] });
   await saveData(); await loadData(); go('today'); render();
+}
+
+async function togglePause(id) {
+  const g = D.goals.find(x => x.id === id); if (!g) return;
+  if (!g.paused) {
+    if (!confirm('暂停「' + g.title + '」？暂停期间不再出现在今天，也不会推送。')) return;
+    g.paused = true;
+  } else {
+    g.paused = false;
+  }
+  await saveData(); await loadData(); render();
 }
 
 async function delGoal(id) {
