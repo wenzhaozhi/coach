@@ -106,6 +106,25 @@ const SYS_CHAT = `你是用户的私人教练。简短回答（50字内），每
 输出 JSON：{"reply":"...","update_plan":null} 或 {"reply":"...","update_plan":{"why":"...","stages":[...]}}
 改计划时保留 3-5 个阶段骨架，只调难度，不要推倒重来。`;
 
+async function aiVision(promptText, dataUrl) {
+  const r = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + CFG.aiKey },
+    body: JSON.stringify({
+      model: CFG.model || 'deepseek-flash',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: promptText },
+        { type: 'image_url', image_url: { url: dataUrl, detail: 'low' } }
+      ]}]
+    })
+  });
+  if (!r.ok) throw new Error('AI ' + r.status);
+  const j = await r.json();
+  const t = j.choices[0].message.content.trim()
+    .replace(/^```json/, '').replace(/^```/, '').replace(/```$/, '').trim();
+  return JSON.parse(t);
+}
+
 async function ai(sys, user) {
   const r = await fetch('https://api.deepseek.com/v1/chat/completions', {
     method: 'POST',
@@ -227,9 +246,40 @@ function startTimer(id, mins) {
 }
 function cancelTimer(id) { delete TIMERS[id]; render(); }
 function shoot(id) { document.getElementById('cam-' + id).click(); }
+
+function shrink(file, max, quality) {
+  return new Promise((res, rej) => {
+    const img = new Image(); const fr = new FileReader();
+    fr.onload = () => { img.onload = () => {
+      const sc = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      res(cv.toDataURL('image/jpeg', quality));
+    }; img.onerror = rej; img.src = fr.result; };
+    fr.onerror = rej; fr.readAsDataURL(file);
+  });
+}
+
 async function shootDone(id, input) {
   if (!input.files || !input.files[0]) return;
-  act(id, 'done');
+  const g = D.goals.find(x => x.id === id);
+  const task = g ? g.title : '这件事';
+  try {
+    input.disabled = true;
+    const big = await shrink(input.files[0], 512, 0.7);
+    const out = await aiVision(
+      '这张照片能否证明用户刚才在做「' + task + '」？宽松判断：只要有相关物品或场景即可。' +
+      '只输出 JSON：{"ok":true/false,"comment":"10字以内的评语"}', big);
+    if (!out.ok) { alert('AI 没认出来：' + (out.comment || '换一张试试')); input.disabled = false; input.value = ''; return; }
+    const thumb = await shrink(input.files[0], 180, 0.6);
+    const d = todayStr(); D.log[d] = D.log[d] || {};
+    D.log[d]['p' + id] = { t: thumb, c: out.comment || '' , date: d };
+    await act(id, 'done');
+  } catch (e) {
+    alert('识别失败：' + e.message);
+    input.disabled = false;
+  }
 }
 async function countUp(id, target) {
   const d = todayStr(); D.log[d] = D.log[d] || {};
@@ -296,6 +346,9 @@ function render() {
           <div class="meta">${esc(i.task)}</div>
           ${i.isTiny ? '<div class="tiny">今天是最小版本：做完就算赢</div>' : ''}
           <div class="meta">${esc(i.stage)} · 连续 ${i.streak} 天${i.canUp?` · 还差 ${i.toNext} 天进下一阶段`:' · 已到最后一阶段'}</div>
+          ${(D.log[todayStr()] && D.log[todayStr()]['p' + i.id]) ? `<div style="margin-top:10px;display:flex;gap:10px;align-items:center">
+            <img src="${D.log[todayStr()]['p' + i.id].t}" style="width:64px;height:64px;object-fit:cover;border-radius:10px">
+            <div class="meta" style="margin:0">${esc(D.log[todayStr()]['p' + i.id].c || '')}</div></div>` : ''}
           ${TIMERS[i.id] ? `<div class="meta" id="tm-${i.id}" style="font-size:26px;color:#8ff0f0;margin-top:10px">--:--</div>
             <div class="row"><button class="ghost" onclick="cancelTimer(${i.id})">放弃计时</button></div>` : checkUI(i, i)}
         </div>`).join('') : '<div class="empty">还没有目标<br>点下面「＋ 新目标」</div>'}`;
