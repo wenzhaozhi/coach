@@ -219,6 +219,10 @@ function render() {
         </div>
         <textarea id="chatmsg" placeholder="说说你现在的情况"></textarea>
         <div class="row"><button class="primary" onclick="sendChat(${g.id})">发送</button></div>
+      </div>
+      <div class="card">
+        <div class="meta">不想要这个目标了？删除后不会恢复。</div>
+        <div class="row"><button class="ghost" style="color:#f08a8a;border-color:rgba(240,138,138,.3)" onclick="delGoal(${g.id})">删除这个目标</button></div>
       </div>`;
   }
   if (TAB === 'new') {
@@ -264,6 +268,15 @@ async function create(title) {
   D.goals.push({ id, title, type: 'skill', why: p.why, stages: p.stages,
                  stage: 0, streak: 0, stage_streak: 0, miss: 0, level: 2, chat: [] });
   await saveData(); await loadData(); go('today'); render();
+}
+
+async function delGoal(id) {
+  const g = D.goals.find(x => x.id === id);
+  if (!g) return;
+  if (!confirm('删除「' + g.title + '」？打卡记录也会一起清掉。')) return;
+  D.goals = D.goals.filter(x => x.id !== id);
+  Object.keys(D.log || {}).forEach(d => { if (D.log[d]) delete D.log[d][id]; });
+  await saveData(); await loadData(); go('goals'); render();
 }
 
 async function quick(id, q) { document.getElementById('chatmsg').value = q; sendChat(id); }
