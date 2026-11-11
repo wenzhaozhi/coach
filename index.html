@@ -53,7 +53,8 @@
 <nav>
  <a href="#today" id="n-today">今天</a>
  <a href="#goals" id="n-goals">目标</a>
- <a href="#new" id="n-new">＋ 新目标</a>
+ <a href="#review" id="n-review">复盘</a>
+ <a href="#new" id="n-new">＋</a>
 </nav>
 <script>
 /* ================= 配置与数据层 ================= */
@@ -85,6 +86,7 @@ async function loadData() {
   D.fixed.water = D.fixed.water || { goal_ml: 1700, cup_ml: 200, ml: 0, date: todayStr() };
   if (D.fixed.water.date !== todayStr()) { D.fixed.water.date = todayStr(); D.fixed.water.ml = 0; }
   D.fixed.meal = D.fixed.meal || { text: "吃饭慢一点，细嚼慢咽", date: "" };
+  D.reviews = D.reviews || [];
   return D;
 }
 
@@ -279,6 +281,23 @@ function render() {
         <div class="row"><button class="ghost" style="color:#f08a8a;border-color:rgba(240,138,138,.3)" onclick="delGoal(${g.id})">删除这个目标</button></div>
       </div>`;
   }
+  if (TAB === 'review') {
+    const rs = (D.reviews || []).slice().reverse();
+    const thisWeek = weekKey();
+    const has = rs.some(r => r.week === thisWeek);
+    V.innerHTML = `<div class="kicker">每周复盘</div><h1>看一周，不评价</h1>
+      <div class="sub">AI 读你这周的打卡，指出模式，给一条建议。</div>
+      <div class="card">
+        <div class="row">${has
+          ? '<button class="ghost" onclick="genReview(true)">重新生成这周的</button>'
+          : '<button class="primary" onclick="genReview(false)">生成本周复盘</button>'}</div>
+        <div id="rv-err" class="meta" style="color:#f0a84a"></div>
+      </div>
+      ${rs.map(r => `<div class="card">
+        <div class="kicker">${esc(r.week)}</div>
+        <div style="font-size:16px;line-height:1.9;margin-top:10px;white-space:pre-wrap">${esc(r.text)}</div>
+      </div>`).join('') || '<div class="empty">还没有复盘</div>'}`;
+  }
   if (TAB === 'new') {
     V.innerHTML = `<div class="kicker">新建目标</div><h1>你想改变什么</h1>
       <div class="sub">写一句话，AI 帮你拆成阶段</div>
@@ -298,6 +317,52 @@ async function act(id, what) {
   if (what === 'later') D.log[d][id] = 'later';
   if (what === 'undo') delete D.log[d][id];
   await saveData(); await loadData(); render();
+}
+
+function weekKey() {
+  const d = new Date(); const onejan = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil((((d - onejan) / 86400000) + onejan.getDay() + 1) / 7);
+  return d.getFullYear() + '-W' + String(week).padStart(2, '0');
+}
+
+function weekStats() {
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const k = d.toLocaleDateString('sv-SE');
+    const wd = '日一二三四五六'[d.getDay()];
+    const rec = (D.log || {})[k] || {};
+    days.push({ date: k, weekday: '周' + wd,
+                goals: D.goals.filter(g => !g.paused).filter(g => rec[g.id] === 'done').map(g => g.title),
+                water: (D.fixed.water.date === k ? D.fixed.water.ml : 0) });
+  }
+  return days;
+}
+
+async function genReview(again) {
+  const el = document.getElementById('rv-err');
+  el.textContent = 'AI 正在读你的记录…';
+  const days = weekStats();
+  const lines = days.map(d =>
+    `${d.date} ${d.weekday}：完成 ${d.goals.length ? d.goals.join('、') : '无'}；喝水 ${d.water} ml`).join('\n');
+  const goals = D.goals.filter(g => !g.paused).map(g => g.title).join('、');
+  const prompt = `这是用户过去 7 天的记录：\n${lines}\n\n在做的目标：${goals}\n\n` +
+    `请写一段复盘，要求：\n` +
+    `1. 不超过 180 字，直接说事实，不要鼓励、不要"你真棒"\n` +
+    `2. 指出一个具体模式（比如总在周几断、哪个目标掉队最厉害）\n` +
+    `3. 给一条下周能立刻执行的调整建议\n` +
+    `4. 如果这周几乎没做，就直说，不要美化\n` +
+    `只输出 JSON：{"review":"..."}`;
+  try {
+    const out = await ai('你是一个不灌鸡汤、只说事实的教练。', prompt);
+    const text = (out.review || '').trim();
+    if (!text) throw new Error('AI 没返回内容');
+    D.reviews = (D.reviews || []).filter(r => r.week !== weekKey());
+    D.reviews.push({ week: weekKey(), date: todayStr(), text });
+    await saveData(); await loadData(); render();
+  } catch (e) {
+    el.textContent = '生成失败：' + e.message;
+  }
 }
 
 async function preview() {
