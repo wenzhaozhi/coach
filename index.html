@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0f11">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="自己人">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>自己人</title>
+<style>
+ *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+ body{background:radial-gradient(120% 50% at 50% 0%,#17262a 0%,transparent 55%),#080b0d;color:#eaf2f5;
+      font-family:-apple-system,"PingFang SC",sans-serif;min-height:100vh;padding:26px 18px 100px;max-width:560px;margin:0 auto}
+ .kicker{color:#7f959d;font-size:13px;letter-spacing:1px}
+ h1{font-size:26px;font-weight:600;margin:8px 0 6px;line-height:1.4}
+ .sub{color:#8fa6ad;font-size:15px;line-height:1.7;margin-bottom:20px}
+ .card{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:18px;margin-bottom:13px}
+ .task{font-size:19px;font-weight:600;line-height:1.5}
+ .meta{color:#7f959d;font-size:13px;margin-top:7px;line-height:1.6}
+ .tiny{color:#f0a84a;font-size:13px;margin-top:6px}
+ .row{display:flex;gap:9px;margin-top:14px}
+ button{border:none;border-radius:12px;padding:13px 16px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+ .primary{background:linear-gradient(180deg,#8ff0f0,#3fb6d4);color:#04161a;flex:1}
+ .ghost{background:rgba(255,255,255,.07);color:#cfe3e8;border:1px solid rgba(255,255,255,.1)}
+ button:active{transform:scale(.98)}
+ button:disabled{opacity:.5}
+ .done{opacity:.45}.done .task{text-decoration:line-through;color:#7f959d}
+ .empty{color:#7f959d;text-align:center;padding:36px 0;line-height:1.8}
+ input,select,textarea{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+      border-radius:12px;color:#eaf2f5;padding:12px;font-size:16px;font-family:inherit;margin-top:8px}
+ input:focus,textarea:focus{outline:none;border-color:#3fb6d4}
+ nav{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;gap:6px;
+     padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(8,11,13,.94);
+     backdrop-filter:blur(14px);border-top:1px solid rgba(255,255,255,.07)}
+ nav a{color:#6f838a;text-decoration:none;font-size:13px;padding:9px 17px;border-radius:10px}
+ nav a.on{color:#0b0f11;background:#8ff0f0;font-weight:600}
+ .msg{display:flex;margin-bottom:9px}
+ .msg.user{justify-content:flex-end}
+ .bubble{max-width:82%;padding:10px 13px;border-radius:14px;font-size:15px;line-height:1.6}
+ .msg.user .bubble{background:linear-gradient(180deg,#8ff0f0,#3fb6d4);color:#04161a}
+ .msg.assistant .bubble{background:rgba(255,255,255,.07)}
+ .stage{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:14px}
+ .stage:last-child{border:none}
+ .top{display:flex;justify-content:space-between;align-items:center}
+ .gear{color:#7f959d;font-size:22px;cursor:pointer;padding:0 6px}
+</style>
+</head>
+<body>
+<div id="view"></div>
+<nav>
+ <a href="#today" id="n-today">今天</a>
+ <a href="#goals" id="n-goals">目标</a>
+ <a href="#new" id="n-new">＋ 新目标</a>
+</nav>
+<script>
+/* ================= 配置与数据层 ================= */
+const LS = 'coach_cfg_v1';
+let CFG = JSON.parse(localStorage.getItem(LS) || '{}');
+let D = null, TAB = (location.hash || '#today').slice(1);
+
+const saveCfg = () => localStorage.setItem(LS, JSON.stringify(CFG));
+const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+const todayStr = () => new Date().toLocaleDateString('sv-SE');   // yyyy-mm-dd
+
+async function gh(method, body) {
+  const r = await fetch(`https://api.github.com/gists/${CFG.gist}`, {
+    method: method || 'GET',
+    headers: { Authorization: 'Bearer ' + CFG.token, Accept: 'application/vnd.github+json',
+               'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!r.ok) throw new Error('GitHub ' + r.status);
+  return r.json();
+}
+
+async function loadData() {
+  const g = await gh();
+  const f = Object.values(g.files)[0];
+  D = JSON.parse(f.content || '{}');
+  D.goals = D.goals || []; D.log = D.log || {};
+  return D;
+}
+
+async function saveData() {
+  const content = JSON.stringify(D, null, 1);
+  const files = {}; files[CFG.file || 'gistfile1.txt'] = { content };
+  await gh('PATCH', { files });
+}
+
+/* ================= AI ================= */
+const SYS_PLAN = `你是严格的个人教练，把目标拆成可执行计划。
+只输出 JSON：{"why":"一句话","stages":[{"period":"阶段 1","focus":"8字内","daily":"每天的具体动作(含时长)","tiny":"2分钟内能做完的最小版本"}]}
+规则：3-5个阶段；daily 必须是动作不是目标；tiny 必须是 daily 的极简版；不要鸡汤。`;
+
+const SYS_CHAT = `你是用户的私人教练。简短回答（50字内），每次给一个能立刻执行的动作。
+如果用户说时间不够/太难/没动力/连续没做，就调整计划。
+输出 JSON：{"reply":"...","update_plan":null} 或 {"reply":"...","update_plan":{"why":"...","stages":[...]}}
+改计划时保留 3-5 个阶段骨架，只调难度，不要推倒重来。`;
+
+async function ai(sys, user) {
+  const r = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + CFG.aiKey },
+    body: JSON.stringify({
+      model: CFG.model || 'deepseek-flash', temperature: 0.7,
+      response_format: { type: 'json_object' },
+      messages: [{ role: 'system', content: sys }, { role: 'user', content: user }]
+    })
+  });
+  if (!r.ok) throw new Error('AI ' + r.status);
+  const j = await r.json();
+  let t = j.choices[0].message.content.trim()
+    .replace(/^```json/, '').replace(/^```/, '').replace(/```$/, '').trim();
+  return JSON.parse(t);
+}
+
+/* ================= 渲染 ================= */
+function ensureSetup() {
+  if (!CFG.gist || !CFG.token || !CFG.aiKey) {
+    document.getElementById('view').innerHTML = `
+      <div class="kicker">第一次使用</div>
+      <h1>连接你的数据</h1>
+      <div class="sub">填一次就好，存在这台手机的浏览器里，不会上传到任何地方。</div>
+      <div class="card">
+        <div class="meta">Gist ID</div>
+        <input id="s-gist" placeholder="32693d30..." value="${esc(CFG.gist||'')}">
+        <div class="meta" style="margin-top:12px">GitHub Token（gist 权限）</div>
+        <input id="s-token" placeholder="ghp_..." value="${esc(CFG.token||'')}">
+        <div class="meta" style="margin-top:12px">DeepSeek API Key</div>
+        <input id="s-ai" placeholder="sk-..." value="${esc(CFG.aiKey||'')}">
+        <div class="meta" style="margin-top:12px">文件名（gist 里的那个）</div>
+        <input id="s-file" placeholder="gistfile1.txt" value="${esc(CFG.file||'gistfile1.txt')}">
+        <div class="row"><button class="primary" onclick="doSetup()">连接</button></div>
+        <div id="s-err" class="meta" style="color:#f0a84a"></div>
+      </div>`;
+    return false;
+  }
+  return true;
+}
+
+async function doSetup() {
+  CFG = { gist: v('s-gist'), token: v('s-token'), aiKey: v('s-ai'), file: v('s-file') || 'gistfile1.txt' };
+  try {
+    await loadData(); saveCfg(); render();
+  } catch (e) {
+    document.getElementById('s-err').textContent = '连接失败：' + e.message;
+  }
+}
+const v = id => document.getElementById(id).value.trim();
+
+function items() {
+  const log = (D.log || {})[todayStr()] || {};
+  return D.goals.map(g => {
+    const st = g.stages[Math.min(g.stage || 0, g.stages.length - 1)];
+    const tiny = (g.level || 2) <= 1;
+    return { id: g.id, title: g.title, task: tiny ? st.tiny : st.daily, isTiny: tiny,
+             state: log[g.id] || 'open', streak: g.streak || 0, stage: st.period,
+             toNext: Math.max(0, 5 - (g.stage_streak || 0)),
+             canUp: (g.stage || 0) < g.stages.length - 1 };
+  });
+}
+
+function render() {
+  if (!ensureSetup()) return;
+  ['today','goals','new'].forEach(t => {
+    const el = document.getElementById('n-' + t); if (el) el.className = (t === TAB ? 'on' : '');
+  });
+  const V = document.getElementById('view');
+  if (TAB === 'today') {
+    const it = items(); const done = it.filter(i => i.state === 'done').length;
+    let head, sub;
+    if (!it.length) { head = '还没有目标'; sub = '先加一个，只加一个。'; }
+    else if (!done) { head = '今天还没开始'; sub = '挑最小的那件，做两分钟。'; }
+    else if (done < it.length) { head = `做了 ${done} 件，还剩 ${it.length - done}`; sub = '继续，或者今天就到这。'; }
+    else { head = '今天的都做完了'; sub = '不需要再加码，休息是计划的一部分。'; }
+    V.innerHTML = `
+      <div class="top"><div class="kicker">${todayStr()}</div><div class="gear" onclick="logout()">⚙</div></div>
+      <h1>${esc(head)}</h1><div class="sub">${esc(sub)}</div>
+      ${it.length ? it.map(i => `
+        <div class="card ${i.state==='done'?'done':''}">
+          <div class="task">${esc(i.title)}</div>
+          <div class="meta">${esc(i.task)}</div>
+          ${i.isTiny ? '<div class="tiny">今天是最小版本：做完就算赢</div>' : ''}
+          <div class="meta">${esc(i.stage)} · 连续 ${i.streak} 天${i.canUp?` · 还差 ${i.toNext} 天进下一阶段`:' · 已到最后一阶段'}</div>
+          <div class="row">${i.state==='done'
+            ? `<button class="ghost" onclick="act(${i.id},'undo')">撤销</button>`
+            : `<button class="primary" onclick="act(${i.id},'done')">做了</button>
+               <button class="ghost" onclick="act(${i.id},'later')">推迟</button>`}</div>
+        </div>`).join('') : '<div class="empty">还没有目标<br>点下面「＋ 新目标」</div>'}`;
+  }
+  if (TAB === 'goals') {
+    V.innerHTML = `<div class="kicker">全部目标</div><h1>${D.goals.length} 个目标</h1>
+      <div class="sub">同时别超过 3 个</div>` + D.goals.map(g => `
+      <div class="card"><div class="task">${esc(g.title)}</div>
+        <div class="meta">${esc(g.why || '')}</div>
+        <div class="meta">${esc(g.stages[Math.min(g.stage||0,g.stages.length-1)].period)} · 连续 ${g.streak||0} 天 · 等级 ${g.level||2}</div>
+        <div class="row"><button class="ghost" onclick="go('goal-${g.id}')">看计划 / 和教练说</button></div>
+      </div>`).join('');
+  }
+  if (TAB.startsWith('goal-')) {
+    const id = +TAB.split('-')[1];
+    const g = D.goals.find(x => x.id === id);
+    if (!g) { V.innerHTML = '没找到'; return; }
+    V.innerHTML = `
+      <div class="kicker">${esc(g.type || 'goal')}</div>
+      <h1>${esc(g.title)}</h1><div class="sub">${esc(g.why || '')}</div>
+      <div class="card">${g.stages.map((s, i) => `<div class="stage">
+        <span>${esc(s.period)} · ${esc(s.focus)}</span><b>${i === (g.stage||0) ? '← 现在' : '·'}</b></div>`).join('')}</div>
+      <div class="card"><div class="meta">连续 ${g.streak||0} 天 · 等级 ${g.level||2}（1=最小版本，3=加量）</div></div>
+      <div class="card">
+        <div class="meta" style="margin-bottom:10px">和教练说</div>
+        <div>${(g.chat||[]).map(m => `<div class="msg ${m.role}"><div class="bubble">${esc(m.text)}</div></div>`).join('') || '<div class="meta">还没有对话</div>'}</div>
+        <div class="row" style="flex-wrap:wrap;gap:7px">
+          ${['太忙了，只能练5分钟','太难了，做不到','没动力，不想做'].map(q =>
+            `<button class="ghost" style="font-size:13px;padding:8px 11px" onclick="quick(${g.id},'${q}')">${q}</button>`).join('')}
+        </div>
+        <textarea id="chatmsg" placeholder="说说你现在的情况"></textarea>
+        <div class="row"><button class="primary" onclick="sendChat(${g.id})">发送</button></div>
+      </div>`;
+  }
+  if (TAB === 'new') {
+    V.innerHTML = `<div class="kicker">新建目标</div><h1>你想改变什么</h1>
+      <div class="sub">写一句话，AI 帮你拆成阶段</div>
+      <div class="card"><input id="title" placeholder="比如：练吉他 / 减脂 / 每天读书">
+        <div class="row"><button class="primary" onclick="preview()">生成计划</button></div></div>
+      <div id="pv"></div>`;
+  }
+}
+
+/* ================= 操作 ================= */
+function go(h) { location.hash = h; }
+function logout() { if (confirm('清除这台设备上的配置？')) { localStorage.removeItem(LS); CFG = {}; render(); } }
+
+async function act(id, what) {
+  const d = todayStr(); D.log = D.log || {}; D.log[d] = D.log[d] || {};
+  if (what === 'done') D.log[d][id] = 'done';
+  if (what === 'later') D.log[d][id] = 'later';
+  if (what === 'undo') delete D.log[d][id];
+  await saveData(); await loadData(); render();
+}
+
+async function preview() {
+  const t = (document.getElementById('title').value || '').trim(); if (!t) return;
+  document.getElementById('pv').innerHTML = '<div class="card"><div class="meta">AI 正在拆解…</div></div>';
+  try {
+    const p = await ai(SYS_PLAN, '目标：' + t);
+    window._pv = p;
+    document.getElementById('pv').innerHTML = `<div class="card">
+      <div class="meta">${esc(p.why)}</div>
+      ${p.stages.map(s => `<div class="stage"><span>${esc(s.period)} · ${esc(s.focus)}</span></div>
+        <div class="meta" style="padding:0 0 10px">每天：${esc(s.daily)}<br>最小：${esc(s.tiny)}</div>`).join('')}
+      <div class="row"><button class="primary" onclick="create('${esc(t)}')">就用这个</button></div></div>`;
+  } catch (e) {
+    document.getElementById('pv').innerHTML = `<div class="card"><div class="meta" style="color:#f0a84a">生成失败：${esc(e.message)}</div></div>`;
+  }
+}
+
+async function create(title) {
+  const p = window._pv; if (!p) return;
+  const id = Math.max(0, ...D.goals.map(g => g.id)) + 1;
+  D.goals.push({ id, title, type: 'skill', why: p.why, stages: p.stages,
+                 stage: 0, streak: 0, stage_streak: 0, miss: 0, level: 2, chat: [] });
+  await saveData(); await loadData(); go('today'); render();
+}
+
+async function quick(id, q) { document.getElementById('chatmsg').value = q; sendChat(id); }
+
+async function sendChat(id) {
+  const el = document.getElementById('chatmsg'); const t = (el && el.value || '').trim();
+  if (!t) return;
+  const g = D.goals.find(x => x.id === id); if (!g) return;
+  el.value = ''; el.placeholder = '教练正在想…';
+  const ctx = JSON.stringify({ 目标: g.title, 为什么: g.why, 阶段: g.stages[g.stage||0],
+    连续做到: g.streak||0, 连续没做: g.miss||0 });
+  try {
+    const out = await ai(SYS_CHAT, '当前状态：' + ctx + '\n用户说：' + t);
+    g.chat = g.chat || [];
+    g.chat.push({ role: 'user', text: t });
+    if (out.reply) g.chat.push({ role: 'assistant', text: out.reply });
+    if (out.update_plan && out.update_plan.stages && out.update_plan.stages.length >= 2) {
+      g.why = out.update_plan.why || g.why;
+      g.stages = out.update_plan.stages;
+      g.stage = Math.min(g.stage || 0, g.stages.length - 1);
+      g.stage_streak = 0;
+    }
+    await saveData(); await loadData(); render();
+  } catch (e) {
+    el.placeholder = '出错了：' + e.message; el.value = t;
+  }
+}
+
+window.addEventListener('hashchange', () => { TAB = (location.hash || '#today').slice(1); render(); });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+loadData().then(render).catch(() => { if (!CFG.gist) render(); });
+</script>
+</body>
+</html>
