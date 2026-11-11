@@ -274,9 +274,13 @@ async function shootDone(id, input) {
   try {
     input.disabled = true;
     const big = await shrink(input.files[0], 512, 0.7);
+    const custom = (checkOf(g).prompt || '').trim();
+    const rule = custom
+      ? '用户自己定的合格标准是：「' + custom + '」。严格按这个标准判断。'
+      : '宽松判断：只要有相关物品或场景即可。';
     const out = await aiVision(
-      '这张照片能否证明用户刚才在做「' + task + '」？宽松判断：只要有相关物品或场景即可。' +
-      '只输出 JSON：{"ok":true/false,"comment":"10字以内的评语"}', big);
+      '这张照片能否证明用户刚才在做「' + task + '」？' + rule +
+      '只输出 JSON：{"ok":true/false,"comment":"20字以内，说清哪里不合格或哪里合格"}', big);
     if (!out.ok) { alert('AI 没认出来：' + (out.comment || '换一张试试')); input.disabled = false; input.value = ''; return; }
     const thumb = await shrink(input.files[0], 180, 0.6);
     const d = todayStr(); D.log[d] = D.log[d] || {};
@@ -403,6 +407,10 @@ function render() {
             ${[5,10,15,20,30,45,60].map(m => `<button class="ghost" style="font-size:13px;padding:8px 11px;${(checkOf(g).minutes||15)===m?'border-color:#8ff0f0;color:#8ff0f0':''}" onclick="setMinutes(${g.id},${m})">${m}分</button>`).join('')}
             <button class="ghost" style="font-size:13px;padding:8px 11px" onclick="setMinutes(${g.id},0)">自定义</button>
           </div>` : ''}
+        ${checkOf(g).type === 'photo' ? `
+          <div class="meta" style="margin-top:14px">合格的拍照标准（AI 按这个判断）</div>
+          <textarea id="pm-${g.id}" placeholder="比如：画面里要有吉他和我的手，能看到琴弦。只有吉他或只有手都不算。">${esc(checkOf(g).prompt || '')}</textarea>
+          <div class="row"><button class="ghost" onclick="setPrompt(${g.id})">保存标准</button></div>` : ''}
         ${checkOf(g).type === 'count' ? `
           <div class="meta" style="margin-top:14px">今天的目标次数：${checkOf(g).target || 8}</div>
           <div class="row" style="flex-wrap:wrap;gap:7px">
@@ -531,6 +539,13 @@ async function create(title) {
                  stage: 0, streak: 0, stage_streak: 0, miss: 0, level: 2, chat: [],
                  check: inferCheck(title) });
   await saveData(); await loadData(); go('today'); render();
+}
+
+async function setPrompt(id) {
+  const g = D.goals.find(x => x.id === id); if (!g) return;
+  const t = (document.getElementById('pm-' + id).value || '').trim();
+  g.check = Object.assign({}, checkOf(g), { type: 'photo', prompt: t });
+  await saveData(); await loadData(); render();
 }
 
 async function setMinutes(id, m) {
