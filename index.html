@@ -87,6 +87,12 @@ async function loadData() {
   if (D.fixed.water.date !== todayStr()) { D.fixed.water.date = todayStr(); D.fixed.water.ml = 0; }
   D.fixed.meal = D.fixed.meal || { text: "吃饭慢一点，细嚼慢咽", date: "" };
   D.reviews = D.reviews || [];
+  // 清理 7 天前的照片缩略图（gist 不能无限增长）
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7);
+  const cut = cutoff.toLocaleDateString('sv-SE');
+  Object.keys(D.log || {}).forEach(k => {
+    if (k < cut) Object.keys(D.log[k]).forEach(kk => { if (kk.startsWith('p')) delete D.log[k][kk]; });
+  });
   return D;
 }
 
