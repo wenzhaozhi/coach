@@ -165,7 +165,8 @@ function items() {
     return { id: g.id, title: g.title, task: tiny ? st.tiny : st.daily, isTiny: tiny,
              state: log[g.id] || 'open', streak: g.streak || 0, stage: st.period,
              toNext: Math.max(0, 5 - (g.stage_streak || 0)),
-             canUp: (g.stage || 0) < g.stages.length - 1 };
+             canUp: (g.stage || 0) < g.stages.length - 1,
+             check: g.check };   // ← 之前漏了这个，导致时长永远是默认 15 分钟
   });
 }
 
