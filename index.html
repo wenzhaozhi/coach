@@ -357,11 +357,6 @@ function render() {
       <div class="top"><div class="kicker">${todayStr()}</div><div class="gear" onclick="logout()">⚙</div></div>
       <h1>${esc(head)}</h1><div class="sub">${esc(sub)}</div>
       ${fixedCards()}
-      ${it.some(i => i.state !== 'done') ? `
-      <div class="card" style="border-color:rgba(240,138,138,.25)">
-        <div class="meta">今天还差 ${it.filter(i => i.state !== 'done').length} 件</div>
-        <div class="row"><button class="ghost" style="color:#f08a8a" onclick="confess()">没做到，准备一条认输</button></div>
-      </div>` : ''}
       ${it.length ? it.map(i => `
         <div class="card ${i.state==='done'?'done':''}">
           <div class="task">${esc(i.title)}</div>
@@ -456,13 +451,6 @@ function render() {
           : '<button class="primary" onclick="genReview(false)">生成本周复盘</button>'}</div>
         <div id="rv-err" class="meta" style="color:#f0a84a"></div>
       </div>
-      <div class="card">
-        <div class="meta">认输发到哪个平台</div>
-        <div class="row" style="flex-wrap:wrap;gap:7px">
-          ${Object.entries(PLATFORMS).map(([k, v]) =>
-            `<button class="ghost" style="font-size:13px;padding:8px 11px;${(CFG.platform||'weibo')===k?'border-color:#8ff0f0;color:#8ff0f0':''}" onclick="setPlatform('${k}')">${v.name}</button>`).join('')}
-        </div>
-      </div>
       ${rs.map(r => `<div class="card">
         <div class="kicker">${esc(r.week)}</div>
         <div style="font-size:16px;line-height:1.9;margin-top:10px;white-space:pre-wrap">${esc(r.text)}</div>
@@ -507,24 +495,6 @@ function weekStats() {
                 water: (D.fixed.water.date === k ? D.fixed.water.ml : 0) });
   }
   return days;
-}
-
-async function confess() {
-  const it = items().filter(i => i.state !== 'done');
-  if (!it.length) { alert('今天都做完了，没什么可认的。'); return; }
-  const list = it.map(i => '「' + i.title + '」').join('、');
-  let text = '';
-  try {
-    const out = await ai('你替用户写一条发到社交平台的短文。要求：第一人称，30字以内，平实、不卖惨、不找借口，直接承认没做到。只输出 JSON：{"text":"..."}',
-      '今天没做到的是：' + list + '。已经连续做到 ' + (it[0].streak || 0) + ' 天，今天断了。');
-    text = (out.text || '').trim();
-  } catch (e) { text = ''; }
-  if (!text) text = '今天' + list + '又没做到。记一笔。';
-
-  try { await navigator.clipboard.writeText(text); } catch (e) {}
-  const p = PLATFORMS[CFG.platform || 'weibo'];
-  if (p && p.url) window.open(p.url, '_blank');
-  alert('已复制：\n\n' + text + '\n\n' + (p ? '去' + p.name + '粘贴发布' : '去微信粘贴'));
 }
 
 async function genReview(again) {
@@ -577,8 +547,6 @@ async function create(title) {
                  check: inferCheck(title) });
   await saveData(); await loadData(); go('today'); render();
 }
-
-function setPlatform(k) { CFG.platform = k; saveCfg(); render(); }
 
 async function setPrompt(id) {
   const g = D.goals.find(x => x.id === id); if (!g) return;
