@@ -498,6 +498,9 @@ function render() {
     const fin = done + (left <= 0 ? 1 : 0) + (D.fixed.meal.date === todayStr() ? 1 : 0);
     const pct = Math.round(fin / total * 100);
     const C = 2 * Math.PI * 31;
+    if (!D.dailyLine || D.dailyLine.date !== todayStr()) {
+      D.dailyLine = { date: todayStr(), text: pickLine('daily') };
+    }
     V.innerHTML = `
       <div class="top"><div class="kicker">${todayStr()}</div><div class="gear" onclick="go('settings')">⚙</div></div>
       <div class="hero">
@@ -514,6 +517,9 @@ function render() {
         </div>
         <div class="h-text"><h1>${esc(head)}</h1><div class="sub" style="margin:0">${esc(sub)}</div></div>
       </div>
+      <div class="card" style="border-color:color-mix(in srgb, var(--accent) 14%, transparent)">
+        <div style="font-size:15px;line-height:1.85;color:var(--muted)">${esc(D.dailyLine.text)}</div>
+      </div>
       <div class="card" style="cursor:pointer" onclick="go('rewards')">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div><span style="font-size:24px;font-weight:700;color:var(--accent)">${D.points||0}</span>
@@ -521,6 +527,15 @@ function render() {
           <div class="meta" style="margin:0">🛡 免死金牌 ${D.freeze||0} 张</div>
         </div>
       </div>
+      ${(() => {
+        const y = new Date(); y.setDate(y.getDate() - 1);
+        const yk = y.toLocaleDateString('sv-SE');
+        const missed = D.goals.filter(g => !g.paused && ((D.log[yk] || {})[g.id] !== 'done'));
+        const key = 'back_' + todayStr();
+        if (missed.length && !D.awarded[key]) { D.awarded[key] = 1; D._backLine = pickLine('back'); }
+        return (missed.length && D._backLine) ? `<div class="card" style="border-color:color-mix(in srgb, var(--amber) 20%, transparent)">
+          <div style="font-size:15px;line-height:1.85">${esc(D._backLine)}</div></div>` : '';
+      })()}
       ${fixedCards()}
       ${it.length ? it.map(i => `
         <div class="card ${i.state==='done'?'done':''}">
@@ -676,6 +691,60 @@ function render() {
 function go(h) { location.hash = h; }
 function logout() { if (confirm('清除这台设备上的配置？')) { localStorage.removeItem(LS); CFG = {}; render(); } }
 
+const LINES = {
+  done: [
+    "你今天做的这件事，三个月后你不会记得。但三个月后的你，是它的总和。",
+    "每一次做到，都是在给「我能做到」这件事投票。",
+    "你今天赢的不是这件事，是那个想放弃的瞬间。",
+    "完成的质量不重要。完成本身，在改写你对自己的判断。",
+    "拖延往往不是懒，是怕做不好。你今天没等准备好就开始，这比做完更值钱。",
+    "你刚给明天的自己留了张字条：我说到做到。",
+    "习惯不是靠意志维持的，是靠你不再把它当成一件需要决定的事。",
+    "这一下很轻，但它压过了「算了」那一下。",
+    "你不需要每天都好。你需要的是坏的那天也不彻底放弃。",
+    "所谓自律，是把重要的事变成不需要商量的事。",
+    "今天不是普通的一天。今天是你没有背叛自己的又一天。",
+    "你正在把「我想成为的人」和「我实际在做的」之间的缝，一点点缝上。"
+  ],
+  week: [
+    "七天。这个长度已经跨过了「新鲜感」和「意志力」两个死亡区。",
+    "一周的意义不在于七天，在于你证明了第八天可以继续。",
+    "连续七天，你不是在坚持，你是在建成一条路。"
+  ],
+  stage: [
+    "进了下一阶段。回头看第一天的那个动作，会觉得很轻——这就是进步的样子。",
+    "阶段变了。不是变难了，是你能承受更多了。"
+  ],
+  back: [
+    "你回来了。断掉的那天不说明什么，说明问题的是你第二天有没有回来。",
+    "重新开始不丢人。真正会毁掉一个人的，是「已经断了，那就这样吧」。",
+    "空着的那些天，不是你的人生，只是那几天的记录。",
+    "没有哪一次中断能定义你。只有「还继续」这一件事能。"
+  ],
+  tiny: [
+    "今天只做了最小版本。这不叫打折，这叫没让链条断。",
+    "状态差的时候做一分钟，比状态好的时候做一小时更值钱。",
+    "你选了自己能承受的那一档。这不是妥协，这是聪明。"
+  ],
+  daily: [
+    "你不需要一个完美的开始。你需要一个不中断的开始。",
+    "改变很少是「突然想通了」，多数时候是「无聊地重复了很多次」。",
+    "你现在的努力，短期看不出什么。它的回报在你看不见的地方累积。",
+    "别人看到的是结果。你知道的是那些没被记录的、差点放弃的时刻。",
+    "一个人真正的底气，来自他知道自己在没人看见的时候做过什么。"
+  ]
+};
+
+function pickLine(cat) {
+  const arr = LINES[cat] || LINES.done;
+  D.seenLines = D.seenLines || {};
+  const seen = D.seenLines[cat] || [];
+  const pool = arr.map((_, i) => i).filter(i => !seen.includes(i));
+  const idx = pool.length ? pool[Math.floor(Math.random() * pool.length)] : Math.floor(Math.random() * arr.length);
+  D.seenLines[cat] = [...seen, idx].slice(-Math.max(1, arr.length - 2));
+  return arr[idx];
+}
+
 const POINT_TASK = 10, POINT_WATER = 5, POINT_MEAL = 5, POINT_WEEK = 50;
 const EGGS = [
   '比上周同一天多做了 1 件。',
@@ -746,9 +815,13 @@ async function act(id, what) {
       const r = bump(g, true);
       D.log[d][id] = 'done';
       const left = Math.max(0, 5 - ((g && g.stage_streak) || 0));
-      const egg = Math.random() < 0.3 ? EGGS[Math.floor(Math.random() * EGGS.length)].replace('{n}', g ? g.streak : 0) : '';
-      toast('✓ 记下了',
-        [r.note, r.pts ? '+' + r.pts + ' 分' : '', egg ? egg : (left ? '还差 ' + left + ' 天进下一阶段' : '')]
+      let line = '';
+      if (r.note && r.note.indexOf('金牌') >= 0) line = pickLine('week');
+      else if (r.note && r.note.indexOf('阶段') >= 0) line = pickLine('stage');
+      else if (i.isTiny) line = pickLine('tiny');
+      else if (Math.random() < 0.55) line = pickLine('done');
+      toast(r.note ? '✓ ' + r.note : (line ? '✓ 记下了' : '✓ 记下了'),
+        [r.pts ? '+' + r.pts + ' 分' : '', line || (left ? '还差 ' + left + ' 天进下一阶段' : '')]
           .filter(Boolean).join(' · '));
     } else { D.log[d][id] = 'done'; }
   } else if (what === 'later') {
