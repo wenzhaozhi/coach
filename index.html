@@ -372,7 +372,7 @@ function fixedCards() {
       <div class="task">喝水 <span style="font-size:12px;color:#7f959d">固定</span></div>
       <div class="meta">已喝 ${w.ml} / ${w.goal_ml} ml　${left > 0 ? '还差 ' + left + ' ml' : '今天够了'}</div>
       <div style="height:6px;background:rgba(255,255,255,.08);border-radius:3px;margin-top:10px;overflow:hidden">
-        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#8ff0f0,#3fb6d4)"></div></div>
+        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--accent),var(--accent2))"></div></div>
       <div class="row"><button class="primary" onclick="drink()">喝了一杯（+${w.cup_ml} ml）</button></div>
     </div>
     <div class="card fixed-card meal">
@@ -447,7 +447,7 @@ function render() {
           ${(D.log[todayStr()] && D.log[todayStr()]['p' + i.id]) ? `<div style="margin-top:10px;display:flex;gap:10px;align-items:center">
             <img src="${D.log[todayStr()]['p' + i.id].t}" style="width:64px;height:64px;object-fit:cover;border-radius:10px">
             <div class="meta" style="margin:0">${esc(D.log[todayStr()]['p' + i.id].c || '')}</div></div>` : ''}
-          ${TIMERS[i.id] ? `<div class="meta" id="tm-${i.id}" style="font-size:26px;color:#8ff0f0;margin-top:10px">--:--</div>
+          ${TIMERS[i.id] ? `<div class="meta" id="tm-${i.id}" style="font-size:26px;color:var(--accent);margin-top:10px">--:--</div>
             <div class="row"><button class="ghost" onclick="cancelTimer(${i.id})">放弃计时</button></div>` : checkUI(i, i)}
         </div>`).join('') : '<div class="empty">还没有目标<br>点下面「＋ 新目标」</div>'}`;
   }
@@ -487,12 +487,12 @@ function render() {
       <div class="card"><div class="meta">连续 ${g.streak||0} 天 · 等级 ${g.level||2}</div>
         <div class="meta" style="margin-top:8px">打卡方式：${CHECK_LABEL[checkOf(g).type]}</div>
         <div class="row" style="flex-wrap:wrap;gap:7px">
-          ${Object.keys(CHECK_LABEL).map(k => `<button class="ghost" style="font-size:13px;padding:8px 11px;${checkOf(g).type===k?'border-color:#8ff0f0;color:#8ff0f0':''}" onclick="setCheck(${g.id},'${k}')">${CHECK_LABEL[k]}</button>`).join('')}
+          ${Object.keys(CHECK_LABEL).map(k => `<button class="ghost" style="font-size:13px;padding:8px 11px;${checkOf(g).type===k?'border-color:var(--accent);color:var(--accent)':''}" onclick="setCheck(${g.id},'${k}')">${CHECK_LABEL[k]}</button>`).join('')}
         </div>
         ${checkOf(g).type === 'timer' ? `
           <div class="meta" style="margin-top:14px">时长：${checkOf(g).minutes || 15} 分钟</div>
           <div class="row" style="flex-wrap:wrap;gap:7px">
-            ${[5,10,15,20,30,45,60].map(m => `<button class="ghost" style="font-size:13px;padding:8px 11px;${(checkOf(g).minutes||15)===m?'border-color:#8ff0f0;color:#8ff0f0':''}" onclick="setMinutes(${g.id},${m})">${m}分</button>`).join('')}
+            ${[5,10,15,20,30,45,60].map(m => `<button class="ghost" style="font-size:13px;padding:8px 11px;${(checkOf(g).minutes||15)===m?'border-color:var(--accent);color:var(--accent)':''}" onclick="setMinutes(${g.id},${m})">${m}分</button>`).join('')}
             <button class="ghost" style="font-size:13px;padding:8px 11px" onclick="setMinutes(${g.id},0)">自定义</button>
           </div>` : ''}
         ${checkOf(g).type === 'photo' ? `
@@ -502,7 +502,7 @@ function render() {
         ${checkOf(g).type === 'count' ? `
           <div class="meta" style="margin-top:14px">今天的目标次数：${checkOf(g).target || 8}</div>
           <div class="row" style="flex-wrap:wrap;gap:7px">
-            ${[4,6,8,10,12,20].map(n => `<button class="ghost" style="font-size:13px;padding:8px 11px;${(checkOf(g).target||8)===n?'border-color:#8ff0f0;color:#8ff0f0':''}" onclick="setTarget(${g.id},${n})">${n} 次</button>`).join('')}
+            ${[4,6,8,10,12,20].map(n => `<button class="ghost" style="font-size:13px;padding:8px 11px;${(checkOf(g).target||8)===n?'border-color:var(--accent);color:var(--accent)':''}" onclick="setTarget(${g.id},${n})">${n} 次</button>`).join('')}
           </div>` : ''}
       </div>
       <div class="card">
