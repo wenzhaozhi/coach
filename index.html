@@ -152,7 +152,13 @@ async function loadData() {
   D.fixed = D.fixed || {};
   D.fixed.water = D.fixed.water || { goal_ml: 1700, cup_ml: 200, ml: 0, date: todayStr() };
   if (D.fixed.water.date !== todayStr()) { D.fixed.water.date = todayStr(); D.fixed.water.ml = 0; }
-  D.fixed.meal = D.fixed.meal || { text: "吃饭慢一点，细嚼慢咽", date: "" };
+  if (!D.fixed.meals) {
+    const old = D.fixed.meal || {};
+    D.fixed.meals = [
+      { key: 'lunch',  label: '午饭', time: '11:30', date: old.date || '' },
+      { key: 'dinner', label: '晚饭', time: '17:30', date: '' }
+    ];
+  }
   D.reviews = D.reviews || [];
   // 清理 7 天前的照片缩略图（gist 不能无限增长）
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7);
@@ -174,10 +180,23 @@ const SYS_PLAN = `你是严格的个人教练，把目标拆成可执行计划�
 只输出 JSON：{"why":"一句话","stages":[{"period":"阶段 1","focus":"8字内","daily":"每天的具体动作(含时长)","tiny":"2分钟内能做完的最小版本"}]}
 规则：3-5个阶段；daily 必须是动作不是目标；tiny 必须是 daily 的极简版；不要鸡汤。`;
 
-const SYS_CHAT = `你是用户的私人教练。简短回答（50字内），每次给一个能立刻执行的动作。
-如果用户说时间不够/太难/没动力/连续没做，就调整计划。
-输出 JSON：{"reply":"...","update_plan":null} 或 {"reply":"...","update_plan":{"why":"...","stages":[...]}}
-改计划时保留 3-5 个阶段骨架，只调难度，不要推倒重来。`;
+const SYS_CHAT = `你是用户的私人教练。回答要短（50字内），每次给一个能立刻执行的动作。
+
+你必须真正执行用户的指令，而不是只嘴上答应：
+- 用户说「太难/太忙/时间不够/没动力」→ 必须输出 update_plan 降低难度
+- 用户说「加量/提高/想多练」→ 必须输出 update_plan 提高难度
+- 用户说「改成 X」「换成 Y」「不要 Z」→ 必须输出 update_plan 照做
+- 用户只是提问、诉说、不需要改计划 → update_plan 为 null
+
+输出 JSON：
+{"reply":"...","update_plan":null}
+或
+{"reply":"...","update_plan":{"why":"一句话说明现在练什么","stages":[{"period":"阶段 1","focus":"...","daily":"...","tiny":"..."}]}}
+
+改计划时：
+1. 保留 3-5 个阶段骨架
+2. daily 必须同步改（首页显示的就是 daily，不改就会出现"目标页变了、今天页没变"）
+3. why 用一句话说清当前的核心逻辑`;
 
 async function aiVision(promptText, dataUrl) {
   const r = await fetch('https://api.deepseek.com/v1/chat/completions', {
@@ -370,7 +389,6 @@ function fixedCards() {
   const w = D.fixed.water, m = D.fixed.meal;
   const left = Math.max(0, w.goal_ml - w.ml);
   const pct = Math.min(100, Math.round(w.ml / w.goal_ml * 100));
-  const mealDone = m.date === todayStr();
   return `
     <div class="card fixed-card">
       <div class="task">喝水 <span style="font-size:12px;color:#7f959d">固定</span></div>
@@ -379,13 +397,16 @@ function fixedCards() {
         <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--accent),var(--accent2))"></div></div>
       <div class="row"><button class="primary" onclick="drink()">喝了一杯（+${w.cup_ml} ml）</button></div>
     </div>
-    <div class="card fixed-card meal">
-      <div class="task">细嚼慢咽 <span style="font-size:12px;color:#7f959d">固定</span></div>
-      <div class="meta">${esc(m.text)}${mealDone ? '　· 今天已完成' : ''}</div>
-      <div class="row">${mealDone
-        ? `<button class="ghost" onclick="meal(false)">撤销</button>`
-        : `<button class="primary" onclick="meal(true)">吃完了</button>`}</div>
-    </div>`;
+    ${(D.fixed.meals || []).map(m => {
+      const done = m.date === todayStr();
+      return `<div class="card fixed-card meal">
+        <div class="task">细嚼慢咽 · ${m.label} <span class="badge">${m.time}</span></div>
+        <div class="meta">吃饭慢一点，这一口嚼二十下${done ? '　· 已完成' : ''}</div>
+        <div class="row">${done
+          ? `<button class="ghost" onclick="meal('${m.key}',false)">撤销</button>`
+          : `<button class="primary" onclick="meal('${m.key}',true)">吃完了</button>`}</div>
+      </div>`;
+    }).join("")}`;
 }
 
 async function drink() {
@@ -395,8 +416,10 @@ async function drink() {
   await saveData(); await loadData(); render();
 }
 
-async function meal(done) {
-  D.fixed.meal.date = done ? todayStr() : '';
+async function meal(key, done) {
+  const m = (D.fixed.meals || []).find(x => x.key === key);
+  if (!m) return;
+  m.date = done ? todayStr() : '';
   await saveData(); await loadData(); render();
 }
 
@@ -569,11 +592,33 @@ function render() {
 function go(h) { location.hash = h; }
 function logout() { if (confirm('清除这台设备上的配置？')) { localStorage.removeItem(LS); CFG = {}; render(); } }
 
+function bump(g, up) {
+  if (!g) return;
+  if (up) {
+    g.streak = (g.streak || 0) + 1;
+    g.stage_streak = (g.stage_streak || 0) + 1;
+    g.miss = 0;
+    if (g.stage_streak >= 5 && g.stage < g.stages.length - 1) { g.stage += 1; g.stage_streak = 0; }
+    if (g.streak % 7 === 0) g.level = Math.min(3, (g.level || 2) + 1);
+  } else {
+    g.streak = Math.max(0, (g.streak || 0) - 1);
+    g.stage_streak = Math.max(0, (g.stage_streak || 0) - 1);
+  }
+}
+
 async function act(id, what) {
   const d = todayStr(); D.log = D.log || {}; D.log[d] = D.log[d] || {};
-  if (what === 'done') D.log[d][id] = 'done';
-  if (what === 'later') D.log[d][id] = 'later';
-  if (what === 'undo') delete D.log[d][id];
+  const g = D.goals.find(x => x.id === id);
+  const wasDone = D.log[d][id] === 'done';
+  if (what === 'done') {
+    if (!wasDone) bump(g, true);
+    D.log[d][id] = 'done';
+  } else if (what === 'later') {
+    D.log[d][id] = 'later';
+  } else if (what === 'undo') {
+    if (wasDone) bump(g, false);
+    delete D.log[d][id];
+  }
   await saveData(); await loadData(); render();
 }
 
