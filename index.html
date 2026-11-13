@@ -537,15 +537,6 @@ function render() {
           <div class="meta" style="margin:0">🛡 免死金牌 ${D.freeze||0} 张</div>
         </div>
       </div>
-      ${(() => {
-        const y = new Date(); y.setDate(y.getDate() - 1);
-        const yk = y.toLocaleDateString('sv-SE');
-        const missed = D.goals.filter(g => !g.paused && ((D.log[yk] || {})[g.id] !== 'done'));
-        const key = 'back_' + todayStr();
-        if (missed.length && !D.awarded[key]) { D.awarded[key] = 1; D._backLine = pickLine('back'); }
-        return (missed.length && D._backLine) ? `<div class="card" style="border-color:color-mix(in srgb, var(--amber) 20%, transparent)">
-          <div style="font-size:15px;line-height:1.85">${esc(D._backLine)}</div></div>` : '';
-      })()}
       ${fixedCards()}
       ${it.length ? it.map(i => `
         <div class="card ${i.state==='done'?'done':''}">
