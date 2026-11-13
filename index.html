@@ -160,6 +160,14 @@ async function loadData() {
     ];
   }
   D.reviews = D.reviews || [];
+  D.points = D.points || 0;
+  D.freeze = D.freeze || 0;
+  D.rewards = D.rewards || [
+    { name: '一杯奶茶', cost: 100, got: 0 },
+    { name: '看一场电影', cost: 300, got: 0 },
+    { name: '买一本想要的书', cost: 600, got: 0 }
+  ];
+  D.awarded = D.awarded || {};
   // 清理 7 天前的照片缩略图（gist 不能无限增长）
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7);
   const cut = cutoff.toLocaleDateString('sv-SE');
@@ -413,6 +421,10 @@ async function drink() {
   const w = D.fixed.water;
   if (w.date !== todayStr()) { w.date = todayStr(); w.ml = 0; }
   w.ml += w.cup_ml || 200;
+  if (w.ml >= w.goal_ml) {
+    const p = award('water', POINT_WATER);
+    if (p) toast('✓ 今天的水够了', '+' + p + ' 分');
+  }
   await saveData(); await loadData(); render();
 }
 
@@ -420,7 +432,45 @@ async function meal(key, done) {
   const m = (D.fixed.meals || []).find(x => x.key === key);
   if (!m) return;
   m.date = done ? todayStr() : '';
+  if (done) {
+    const p = award('meal' + key, POINT_MEAL);
+    if (p) toast('✓ ' + m.label + '记下了', '+' + p + ' 分');
+  }
   await saveData(); await loadData(); render();
+}
+
+async function addReward() {
+  const n = (document.getElementById('rw-name').value || '').trim();
+  const c = parseInt(document.getElementById('rw-cost').value || '0', 10);
+  if (!n || !c) return;
+  D.rewards.push({ name: n, cost: c, got: 0 });
+  await saveData(); await loadData(); render();
+}
+
+async function redeem(i) {
+  const r = D.rewards[i];
+  if (!r || (D.points || 0) < r.cost) return;
+  if (!confirm('用 ' + r.cost + ' 分换「' + r.name + '」？')) return;
+  D.points -= r.cost; r.got = (r.got || 0) + 1;
+  await saveData(); await loadData(); render();
+  toast('✓ 换到了：' + r.name, '剩下的分继续攒');
+}
+
+async function useFreeze() {
+  if ((D.freeze || 0) <= 0) return;
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  const yk = y.toLocaleDateString('sv-SE');
+  const cand = D.goals.filter(g => !g.paused && ((D.log[yk] || {})[g.id] !== 'done'))
+                      .sort((a, b) => (b.streak || 0) - (a.streak || 0))[0];
+  if (!cand) { alert('昨天没有断掉的记录。'); return; }
+  if (!confirm('给「' + cand.title + '」补上昨天，连续天数不断？')) return;
+  D.log[yk] = D.log[yk] || {};
+  D.log[yk][cand.id] = 'done';
+  cand.streak = (cand.streak || 0) + 1;
+  cand.stage_streak = (cand.stage_streak || 0) + 1;
+  D.freeze -= 1;
+  await saveData(); await loadData(); render();
+  toast('✓ 用掉 1 张金牌', '「' + cand.title + '」连续 ' + cand.streak + ' 天');
 }
 
 function setTheme(t) { CFG.theme = t; saveCfg(); applyTheme(); render(); }
@@ -463,6 +513,13 @@ function render() {
           <div class="pct">${fin}/${total}</div>
         </div>
         <div class="h-text"><h1>${esc(head)}</h1><div class="sub" style="margin:0">${esc(sub)}</div></div>
+      </div>
+      <div class="card" style="cursor:pointer" onclick="go('rewards')">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><span style="font-size:24px;font-weight:700;color:var(--accent)">${D.points||0}</span>
+            <span class="meta" style="margin-left:6px">积分</span></div>
+          <div class="meta" style="margin:0">🛡 免死金牌 ${D.freeze||0} 张</div>
+        </div>
       </div>
       ${fixedCards()}
       ${it.length ? it.map(i => `
@@ -547,6 +604,33 @@ function render() {
         <div class="row"><button class="ghost" style="color:#f08a8a;border-color:rgba(240,138,138,.3)" onclick="delGoal(${g.id})">删除这个目标</button></div>
       </div>`;
   }
+  if (TAB === 'rewards') {
+    const rs = D.rewards || [];
+    V.innerHTML = `<div class="kicker">奖励</div><h1>${D.points||0} 分</h1>
+      <div class="sub">做一件 +10 · 喝够水 +5 · 一顿饭 +5 · 连续 7 天 +50</div>
+      <div class="card">
+        <div class="meta">🛡 免死金牌 ${D.freeze||0} 张</div>
+        <div class="meta">连续做到 7 天送 1 张。用一张可以补上昨天断掉的一天，连续天数不断。</div>
+        <div class="row">${(D.freeze||0) > 0
+          ? `<button class="primary" onclick="useFreeze()">用 1 张补昨天</button>`
+          : `<button class="ghost" disabled>还没有金牌</button>`}</div>
+      </div>
+      <div class="card">
+        <div class="meta" style="margin-bottom:8px">兑换</div>
+        ${rs.map((r, i) => `<div class="stage">
+          <span>${esc(r.name)}</span>
+          <span style="color:${(D.points||0) >= r.cost ? 'var(--accent)' : 'var(--dim)'}">${r.cost} 分</span>
+          <button class="ghost" style="padding:6px 12px;font-size:13px" ${(D.points||0) < r.cost ? 'disabled' : ''}
+            onclick="redeem(${i})">兑</button>
+        </div>`).join('') || '<div class="meta">还没有奖励，下面加一个</div>'}
+      </div>
+      <div class="card">
+        <div class="meta">加一个想要的</div>
+        <input id="rw-name" placeholder="比如：一顿火锅">
+        <input id="rw-cost" type="number" placeholder="需要多少分（建议 100-800）">
+        <div class="row"><button class="ghost" onclick="addReward()">添加</button></div>
+      </div>`;
+  }
   if (TAB === 'settings') {
     const themes = [['warm','暖夜'],['light','米白'],['forest','墨绿']];
     V.innerHTML = `<div class="kicker">设置</div><h1>外观与数据</h1>
@@ -592,18 +676,65 @@ function render() {
 function go(h) { location.hash = h; }
 function logout() { if (confirm('清除这台设备上的配置？')) { localStorage.removeItem(LS); CFG = {}; render(); } }
 
+const POINT_TASK = 10, POINT_WATER = 5, POINT_MEAL = 5, POINT_WEEK = 50;
+const EGGS = [
+  '比上周同一天多做了 1 件。',
+  '这是你连续第 {n} 天动手。',
+  '今天没找借口。',
+  '这个阶段你已经走了 {n} 天。',
+];
+
+function award(key, pts) {
+  const k = todayStr() + ':' + key;
+  if (D.awarded[k]) return 0;
+  D.awarded[k] = 1; D.points += pts;
+  return pts;
+}
+
 function bump(g, up) {
-  if (!g) return;
+  if (!g) return { pts: 0, note: '' };
+  let pts = 0, note = '';
   if (up) {
     g.streak = (g.streak || 0) + 1;
     g.stage_streak = (g.stage_streak || 0) + 1;
     g.miss = 0;
-    if (g.stage_streak >= 5 && g.stage < g.stages.length - 1) { g.stage += 1; g.stage_streak = 0; }
-    if (g.streak % 7 === 0) g.level = Math.min(3, (g.level || 2) + 1);
+    pts = award('task' + g.id, POINT_TASK);
+    if (g.stage_streak >= 5 && g.stage < g.stages.length - 1) {
+      g.stage += 1; g.stage_streak = 0; note = '进到阶段 ' + (g.stage + 1) + ' 了';
+    }
+    if (g.streak % 7 === 0) {
+      g.level = Math.min(3, (g.level || 2) + 1);
+      g.freeze = (g.freeze || 0); D.freeze += 1;
+      pts += award('week' + g.id, POINT_WEEK);
+      note = '连续 7 天，拿到 1 张免死金牌';
+    }
   } else {
     g.streak = Math.max(0, (g.streak || 0) - 1);
     g.stage_streak = Math.max(0, (g.stage_streak || 0) - 1);
   }
+  return { pts, note };
+}
+
+function toast(title, sub) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'toast';
+    el.style.cssText = 'position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);' +
+      'background:linear-gradient(180deg,var(--surface2),var(--surface));backdrop-filter:blur(20px);' +
+      'border:1px solid var(--line);border-radius:16px;padding:14px 20px;color:var(--text);' +
+      'font-size:15px;text-align:center;opacity:0;transition:all .28s ease;z-index:99;' +
+      'box-shadow:0 12px 40px rgba(0,0,0,.5);pointer-events:none;max-width:82vw';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = '<div style="font-weight:700">' + title + '</div>' +
+    (sub ? '<div style="font-size:13px;color:var(--muted);margin-top:4px">' + sub + '</div>' : '');
+  requestAnimationFrame(() => {
+    el.style.opacity = '1'; el.style.transform = 'translateX(-50%) translateY(0)';
+  });
+  clearTimeout(el._t);
+  el._t = setTimeout(() => {
+    el.style.opacity = '0'; el.style.transform = 'translateX(-50%) translateY(20px)';
+  }, 2600);
 }
 
 async function act(id, what) {
@@ -611,8 +742,15 @@ async function act(id, what) {
   const g = D.goals.find(x => x.id === id);
   const wasDone = D.log[d][id] === 'done';
   if (what === 'done') {
-    if (!wasDone) bump(g, true);
-    D.log[d][id] = 'done';
+    if (!wasDone) {
+      const r = bump(g, true);
+      D.log[d][id] = 'done';
+      const left = Math.max(0, 5 - ((g && g.stage_streak) || 0));
+      const egg = Math.random() < 0.3 ? EGGS[Math.floor(Math.random() * EGGS.length)].replace('{n}', g ? g.streak : 0) : '';
+      toast('✓ 记下了',
+        [r.note, r.pts ? '+' + r.pts + ' 分' : '', egg ? egg : (left ? '还差 ' + left + ' 天进下一阶段' : '')]
+          .filter(Boolean).join(' · '));
+    } else { D.log[d][id] = 'done'; }
   } else if (what === 'later') {
     D.log[d][id] = 'later';
   } else if (what === 'undo') {
