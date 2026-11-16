@@ -476,6 +476,11 @@ async function useFreeze() {
   toast('✓ 用掉 1 张金牌', '「' + cand.title + '」连续 ' + cand.streak + ' 天');
 }
 
+async function refreshNow() {
+  try { await loadData(); render(); toast('已刷新', '数据来自最新'); }
+  catch (e) { toast('刷新失败', e.message); }
+}
+
 function setTheme(t) { CFG.theme = t; saveCfg(); applyTheme(); render(); }
 
 function applyTheme() {
@@ -515,7 +520,11 @@ function render() {
     const backLine = missedY ? (D._backLine || '') : '';
     const quoteLine = backLine || D.dailyLine.text;
     V.innerHTML = `
-      <div class="top"><div class="kicker">${todayStr()}</div><div class="gear" onclick="go('settings')">⚙</div></div>
+      <div class="top"><div class="kicker">${todayStr()}</div>
+        <div style="display:flex;gap:2px">
+          <div class="gear" onclick="refreshNow()" title="刷新">↻</div>
+          <div class="gear" onclick="go('settings')">⚙</div>
+        </div></div>
       <div class="hero">
         <div class="ring">
           <svg width="74" height="74" viewBox="0 0 74 74">
@@ -987,7 +996,17 @@ async function sendChat(id) {
   }
 }
 
-window.addEventListener('hashchange', () => { TAB = (location.hash || '#today').slice(1); render(); });
+window.addEventListener('hashchange', () => {
+  TAB = (location.hash || '#today').slice(1);
+  render();
+  loadData().then(render).catch(() => {});   // 切页面也拉最新
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && CFG.gist) {
+    loadData().then(render).catch(() => {});   // 回到前台自动刷新
+  }
+});
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 loadData().then(render).catch(() => { if (!CFG.gist) render(); });
 </script>
