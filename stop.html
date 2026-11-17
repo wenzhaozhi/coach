@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a0807">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>停一下</title>
+<style>
+ *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+ body{min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;
+   background:radial-gradient(120% 60% at 50% 0%,#2a1d12 0%,transparent 60%),#0a0807;
+   color:#f2ece4;font-family:-apple-system,"PingFang SC",sans-serif;padding:28px;text-align:center}
+ h1{font-size:30px;font-weight:700;line-height:1.4;margin-bottom:14px}
+ .sub{color:#a3948a;font-size:16px;line-height:1.9;max-width:26em}
+ .count{font-size:96px;font-weight:200;color:#e8a45c;margin:34px 0 10px;font-variant-numeric:tabular-nums}
+ .bar{width:min(320px,80vw);height:4px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden;margin-top:8px}
+ .bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#e8a45c,#c9793a);
+   transform-origin:left;transition:transform 1s linear}
+ button{margin-top:34px;border:none;border-radius:16px;padding:16px 30px;font-size:17px;font-weight:600;
+   font-family:inherit;cursor:pointer}
+ .ok{background:rgba(255,255,255,.08);color:#f2ece4;border:1px solid rgba(255,255,255,.12)}
+ .back{background:linear-gradient(180deg,#e8a45c,#c9793a);color:#1a1108;box-shadow:0 8px 26px rgba(200,120,60,.3)}
+ .hidden{display:none}
+ .quote{color:#6d6058;font-size:14px;margin-top:26px;line-height:1.8;max-width:24em}
+</style>
+</head>
+<body>
+<h1 id="t">先停一下</h1>
+<div class="sub" id="s">你打开这个，是想刷一会儿。<br>先看 15 秒，再决定。</div>
+<div class="count" id="c">15</div>
+<div class="bar"><i id="b"></i></div>
+<button class="ok hidden" id="go">我还是要看</button>
+<button class="ok hidden" id="exit">算了，不看了</button>
+<div class="quote" id="q"></div>
+
+<script>
+const QS = [
+  "刷完这 15 分钟，你要做的事还在那儿。",
+  "不是不能看，是别一打开就被它带走。",
+  "你现在是为了放松，还是因为手滑？",
+  "看完之后，你更精神了还是更空了？",
+  "一天里你已经花了几次「就刷一会儿」？"
+];
+document.getElementById("q").textContent = QS[Math.floor(Math.random() * QS.length)];
+
+let left = 15;
+const c = document.getElementById("c"), b = document.getElementById("b");
+const tick = setInterval(() => {
+  left -= 1;
+  c.textContent = Math.max(0, left);
+  b.style.transform = "scaleX(" + Math.max(0, left) / 15 + ")";
+  if (left <= 0) {
+    clearInterval(tick);
+    c.textContent = "0";
+    document.getElementById("t").textContent = "决定吧";
+    document.getElementById("s").textContent = "看完这 15 秒，你再选一次。";
+    document.getElementById("go").classList.remove("hidden");
+    document.getElementById("exit").classList.remove("hidden");
+  }
+}, 1000);
+
+// 直接返回上一页（退出去）
+document.getElementById("exit").onclick = () => {
+  history.back();
+  setTimeout(() => { location.href = "about:blank"; }, 300);
+};
+
+// 确认要看：跳到收藏/或者直接关掉（不留跳板，防止变成"一点就进"）
+document.getElementById("go").onclick = () => {
+  document.body.innerHTML =
+    '<div style="padding:40px;color:#a3948a;font-size:16px;line-height:2">' +
+    '好。记住你刚刚是自己选的。<br><br>要看的话，回桌面自己点开。</div>';
+};
+</script>
+</body>
+</html>
