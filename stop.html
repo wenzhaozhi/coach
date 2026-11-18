@@ -13,65 +13,107 @@
    color:#f2ece4;font-family:-apple-system,"PingFang SC",sans-serif;padding:28px;text-align:center}
  h1{font-size:30px;font-weight:700;line-height:1.4;margin-bottom:14px}
  .sub{color:#a3948a;font-size:16px;line-height:1.9;max-width:26em}
- .count{font-size:96px;font-weight:200;color:#e8a45c;margin:34px 0 10px;font-variant-numeric:tabular-nums}
+ .count{font-size:96px;font-weight:200;color:#e8a45c;margin:30px 0 8px;font-variant-numeric:tabular-nums}
  .bar{width:min(320px,80vw);height:4px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden;margin-top:8px}
  .bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#e8a45c,#c9793a);
    transform-origin:left;transition:transform 1s linear}
- button{margin-top:34px;border:none;border-radius:16px;padding:16px 30px;font-size:17px;font-weight:600;
-   font-family:inherit;cursor:pointer}
+ button{margin-top:26px;border:none;border-radius:16px;padding:16px 30px;font-size:17px;font-weight:600;
+   font-family:inherit;cursor:pointer;min-width:200px}
  .ok{background:rgba(255,255,255,.08);color:#f2ece4;border:1px solid rgba(255,255,255,.12)}
  .back{background:linear-gradient(180deg,#e8a45c,#c9793a);color:#1a1108;box-shadow:0 8px 26px rgba(200,120,60,.3)}
  .hidden{display:none}
- .quote{color:#6d6058;font-size:14px;margin-top:26px;line-height:1.8;max-width:24em}
+ .quote{color:#6d6058;font-size:14px;margin-top:24px;line-height:1.8;max-width:24em}
+ .stat{color:#5f5147;font-size:13px;margin-top:18px}
 </style>
 </head>
 <body>
 <h1 id="t">先停一下</h1>
-<div class="sub" id="s">你打开这个，是想刷一会儿。<br>先看 15 秒，再决定。</div>
+<div class="sub" id="s">先看 15 秒，再决定。</div>
 <div class="count" id="c">15</div>
 <div class="bar"><i id="b"></i></div>
-<button class="ok hidden" id="go">我还是要看</button>
+<button class="ok hidden" id="go">进去用 10 分钟</button>
 <button class="ok hidden" id="exit">算了，不看了</button>
 <div class="quote" id="q"></div>
+<div class="stat" id="st"></div>
 
 <script>
+/* ---------- 配置 ---------- */
+const PASS_MIN = 10;          // 放行多少分钟
+const WAIT = 15;              // 刹车等待秒数
+const SCHEMES = {
+  douyin:    "snssdk1128://",
+  xhs:       "xhsdiscover://",
+  bili:      "bilibili://",
+  wechat:    "weixin://",
+  kuaishou:  "kwai://"
+};
+const NAMES = { douyin: "抖音", xhs: "小红书", bili: "哔哩哔哩", wechat: "微信", kuaishou: "快手" };
+
 const QS = [
   "刷完这 15 分钟，你要做的事还在那儿。",
   "不是不能看，是别一打开就被它带走。",
   "你现在是为了放松，还是因为手滑？",
-  "看完之后，你更精神了还是更空了？",
-  "一天里你已经花了几次「就刷一会儿」？"
+  "看完之后，你更精神了，还是更空了？",
+  "一天里你已经花了几次「就刷一会儿」？",
+  "这 10 分钟，你打算用来干什么？",
 ];
-document.getElementById("q").textContent = QS[Math.floor(Math.random() * QS.length)];
 
-let left = 15;
-const c = document.getElementById("c"), b = document.getElementById("b");
-const tick = setInterval(() => {
-  left -= 1;
-  c.textContent = Math.max(0, left);
-  b.style.transform = "scaleX(" + Math.max(0, left) / 15 + ")";
-  if (left <= 0) {
-    clearInterval(tick);
-    c.textContent = "0";
-    document.getElementById("t").textContent = "决定吧";
-    document.getElementById("s").textContent = "看完这 15 秒，你再选一次。";
-    document.getElementById("go").classList.remove("hidden");
-    document.getElementById("exit").classList.remove("hidden");
-  }
-}, 1000);
+const params = new URLSearchParams(location.search);
+const app = params.get("app") || "douyin";
+const scheme = SCHEMES[app] || SCHEMES.douyin;
+const name = NAMES[app] || "这个 App";
+const key = "pass_" + app;
 
-// 直接返回上一页（退出去）
-document.getElementById("exit").onclick = () => {
-  history.back();
-  setTimeout(() => { location.href = "about:blank"; }, 300);
-};
+/* ---------- 放行期内：静默跳回 App ---------- */
+const until = parseInt(localStorage.getItem(key) || "0", 10);
+if (Date.now() < until) {
+  location.replace(scheme);
+  // 页面几乎看不到就跳走了
+  document.write("");
+} else {
 
-// 确认要看：跳到收藏/或者直接关掉（不留跳板，防止变成"一点就进"）
-document.getElementById("go").onclick = () => {
-  document.body.innerHTML =
-    '<div style="padding:40px;color:#a3948a;font-size:16px;line-height:2">' +
-    '好。记住你刚刚是自己选的。<br><br>要看的话，回桌面自己点开。</div>';
-};
+  /* ---------- 计数 ---------- */
+  const dk = "stopcnt_" + new Date().toLocaleDateString("sv-SE");
+  const cnt = parseInt(localStorage.getItem(dk) || "0", 10) + 1;
+  localStorage.setItem(dk, cnt);
+  document.getElementById("st").textContent = "今天第 " + cnt + " 次想打开" + name;
+
+  document.getElementById("s").textContent = "你打开了" + name + "。先看 15 秒，再决定。";
+  document.getElementById("q").textContent = QS[Math.floor(Math.random() * QS.length)];
+
+  let left = WAIT;
+  const c = document.getElementById("c"), b = document.getElementById("b");
+  const tick = setInterval(() => {
+    left -= 1;
+    c.textContent = Math.max(0, left);
+    b.style.transform = "scaleX(" + Math.max(0, left) / WAIT + ")";
+    if (left <= 0) {
+      clearInterval(tick);
+      c.textContent = "0";
+      document.getElementById("t").textContent = "决定吧";
+      document.getElementById("s").textContent =
+        "进去之后 10 分钟内不会再拦你，时间到了下次打开再停一次。";
+      document.getElementById("go").classList.remove("hidden");
+      document.getElementById("exit").classList.remove("hidden");
+    }
+  }, 1000);
+
+  document.getElementById("go").onclick = () => {
+    localStorage.setItem(key, String(Date.now() + PASS_MIN * 60000));
+    location.replace(scheme);
+    setTimeout(() => {
+      document.getElementById("t").textContent = "没能自动打开";
+      document.getElementById("s").textContent = "回桌面手动点开" + name + "就行，已经放行 10 分钟。";
+      document.getElementById("go").classList.add("hidden");
+      document.getElementById("exit").classList.remove("hidden");
+    }, 1200);
+  };
+
+  document.getElementById("exit").onclick = () => {
+    location.replace("about:blank");
+    setTimeout(() => history.back(), 80);
+  };
+}
 </script>
 </body>
 </html>
