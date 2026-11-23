@@ -104,7 +104,13 @@ if (Date.now() < until) {
 
   document.getElementById("go").onclick = () => {
     localStorage.setItem(key, String(Date.now() + PASS_MIN * 60000));
-    location.replace(scheme);
+    // 优先调用「写放行」快捷指令：它会把放行时间写进文件，再打开 App
+    // 这样自动化下次读到"未过期"就直接结束，不会循环
+    const sc = "shortcuts://run-shortcut?name=" + encodeURIComponent("放行10分钟");
+    location.replace(sc);
+    setTimeout(() => {
+      try { location.replace(scheme); } catch (e) {}
+    }, 1500);
     setTimeout(() => {
       document.getElementById("t").textContent = "没能自动打开";
       document.getElementById("s").textContent = "回桌面手动点开" + name + "就行，已经放行 10 分钟。";
