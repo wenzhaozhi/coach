@@ -64,12 +64,16 @@ const scheme = SCHEMES[app] || SCHEMES.douyin;
 const name = NAMES[app] || "这个 App";
 const key = "pass_" + app;
 
-/* ---------- 放行期内：静默跳回 App ---------- */
+/* ---------- 放行期内：不再自动跳转（否则会和快捷指令形成死循环） ---------- */
 const until = parseInt(localStorage.getItem(key) || "0", 10);
 if (Date.now() < until) {
-  location.replace(scheme);
-  // 页面几乎看不到就跳走了
-  document.write("");
+  const leftMin = Math.ceil((until - Date.now()) / 60000);
+  document.body.innerHTML = `
+    <h1 style="font-size:26px">已放行</h1>
+    <div class="sub">还剩 ${leftMin} 分钟。点下面回「${name}」。</div>
+    <button class="back" id="back" style="margin-top:34px">回到${name}</button>
+    <div class="stat" style="margin-top:22px">注意：这里不自动跳，否则会和快捷指令死循环</div>`;
+  document.getElementById("back").onclick = () => { location.replace(scheme); };
 } else {
 
   /* ---------- 计数 ---------- */
